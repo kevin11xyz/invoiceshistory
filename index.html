@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice History</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      padding: 20px;
+      max-width: 1200px;
+      margin: auto;
+      background: #fff;
+      color: #000;
+    }
+    h1, h2, h3 {
+      text-align: center;
+      letter-spacing: 3px;
+    }
+    h1 { margin-bottom: 20px; font-size: 24px; }
+    h2 { margin: 30px 0 15px; font-size: 20px; }
+    h3 { margin: 20px 0 10px; font-size: 18px; }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 20px;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 8px 5px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    .text-right {
+      text-align: right;
+    }
+    .totals {
+      margin-top: 20px;
+      text-align: right;
+      font-size: 14px;
+    }
+    button {
+      padding: 8px 15px;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .print-btn { background-color: #4CAF50; }
+    .view-btn { background-color: #FF9800; }
+    .back-btn { background-color: #2196F3; }
+    .search-btn { background-color: #607d8b; }
+    .action-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .search-container {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .search-container input {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .date-input {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .date-input:before {
+      content: "📅";
+      font-size: 16px;
+    }
+    @media print {
+      .action-buttons, .search-container { display: none; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="history-list">
+    <h1>INVOICE HISTORY</h1>
+    
+    <div class="search-container">
+      <div class="date-input">
+        <input type="date" id="fromDate">
+      </div>
+      <div class="date-input">
+        <input type="date" id="toDate">
+      </div>
+      <input type="text" id="searchInvoiceId" placeholder="Search Invoice ID">
+      <button class="search-btn" onclick="searchHistory()">Search</button>
+    </div>
+    
+    <table id="historyTable">
+      <thead>
+        <tr>
+          <th>INVOICE NO</th>
+          <th>DATE</th>
+          <th>ITEMS COUNT</th>
+          <th>TOTAL (RS)</th>
+          <th>ACTION</th>
+        </tr>
+      </thead>
+      <tbody id="historyTableBody"></tbody>
+    </table>
+  </div>
+
+  <div id="invoice-view" style="display: none;">
+    <div id="invoice-details"></div>
+    <div class="action-buttons">
+      <button class="back-btn" onclick="showHistoryList()">Back to History</button>
+      <button class="print-btn" onclick="window.print()">Print Invoice</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCddKRuTHpHtaQ0rLOkMOAb5q6slJ3-ybs",
+      authDomain: "project-29b6a.firebaseapp.com",
+      databaseURL: "https://project-29b6a-default-rtdb.firebaseio.com",
+      projectId: "project-29b6a",
+      storageBucket: "project-29b6a.appspot.com",
+      messagingSenderId: "731238594321",
+      appId: "1:731238594321:web:71c168ad6f35df2944feb0"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const historyRef = ref(db, 'History');
+
+    // Format as RS currency
+    function formatRS(amount) {
+      return 'Rs. ' + parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    // Load history data with optional filtering
+    function loadHistory(fromDate = null, toDate = null, invoiceId = null) {
+      const tbody = document.getElementById('historyTableBody');
+      tbody.innerHTML = '';
+
+      get(historyRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const historyData = snapshot.val();
+          let hasResults = false;
+          
+          Object.entries(historyData).forEach(([billNumber, invoice]) => {
+            // Apply filters
+            const invoiceDate = new Date(invoice.date);
+            
+            if (fromDate && new Date(fromDate) > invoiceDate) return;
+            if (toDate && new Date(toDate) < invoiceDate) return;
+            if (invoiceId && !billNumber.includes(invoiceId)) return;
+            
+            hasResults = true;
+            const itemsCount = Object.keys(invoice.items || {}).length;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${billNumber}</td>
+              <td>${invoiceDate.toLocaleDateString()}</td>
+              <td>${itemsCount}</td>
+              <td class="text-right">${invoice.total || 'Rs. 0.00'}</td>
+              <td><button class="view-btn" onclick="viewInvoice('${billNumber}')">View</button></td>
+            `;
+            tbody.appendChild(row);
+          });
+          
+          if (!hasResults) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No matching invoices found</td></tr>';
+          }
+        } else {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No history found</td></tr>';
+        }
+      });
+    }
+
+    // Search history function
+    window.searchHistory = function() {
+      const fromDate = document.getElementById('fromDate').value;
+      const toDate = document.getElementById('toDate').value;
+      const invoiceId = document.getElementById('searchInvoiceId').value;
+      loadHistory(fromDate, toDate, invoiceId);
+    };
+
+    // View invoice details
+    window.viewInvoice = function(billNumber) {
+      get(ref(db, `History/${billNumber}`)).then((snapshot) => {
+        if (snapshot.exists()) {
+          const invoice = snapshot.val();
+          let html = `
+            <h2>INVOICE</h2>
+            <div class="meta">
+              <div><strong>INVOICE NO:</strong> ${billNumber}</div>
+              <div><strong>DATE:</strong> ${new Date(invoice.date).toLocaleString()}</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>ITEM NAME</th>
+                  <th>DESCRIPTION</th>
+                  <th>PRICE (RS)</th>
+                  <th>QTY</th>
+                  <th>DISCOUNT (RS)</th>
+                  <th>TOTAL (RS)</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+
+          Object.values(invoice.items).forEach(item => {
+            const total = (item.Price * item.Quantity) - (item.Discount || 0);
+            html += `
+              <tr>
+                <td>${item.ItemName}</td>
+                <td>${item.Description || '-'}</td>
+                <td class="text-right">${formatRS(item.Price)}</td>
+                <td class="text-right">${item.Quantity}</td>
+                <td class="text-right">${formatRS(item.Discount || 0)}</td>
+                <td class="text-right">${formatRS(total)}</td>
+              </tr>
+            `;
+          });
+
+          html += `
+              </tbody>
+            </table>
+            <div class="totals">
+              <div><strong>SUBTOTAL:</strong> ${invoice.subtotal || 'Rs. 0.00'}</div>
+              <div>Discount: ${invoice.discount || 'Rs. 0.00'}</div>
+              <div><strong>TOTAL:</strong> ${invoice.total || 'Rs. 0.00'}</div>
+            </div>
+          `;
+
+          document.getElementById('invoice-details').innerHTML = html;
+          document.getElementById('history-list').style.display = 'none';
+          document.getElementById('invoice-view').style.display = 'block';
+        }
+      });
+    };
+
+    // Show history list
+    window.showHistoryList = function() {
+      document.getElementById('history-list').style.display = 'block';
+      document.getElementById('invoice-view').style.display = 'none';
+    };
+
+    // Initial load
+    loadHistory();
+  </script>
+</body>
+</html>
